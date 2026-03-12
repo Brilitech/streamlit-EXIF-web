@@ -135,6 +135,7 @@ def generate_final_template(image, exif_lines, logo_choice, watermark_position, 
 
     # Logo kamera
     logo_path = f"logos/{logo_choice}.png"
+    logo_found = False
 
     if os.path.exists(logo_path):
         try:
@@ -152,9 +153,35 @@ def generate_final_template(image, exif_lines, logo_choice, watermark_position, 
 
             logo_y = y_start + logo_offset
             result_img.paste(logo, (logo_x, logo_y), mask=logo)
+            logo_found = True
 
         except Exception as e:
-            print("Logo error:", e)
+            print(f"Logo error: {e}")
+    
+    # Jika logo tidak ditemukan, tampilkan text fallback
+    if not logo_found:
+        fallback_text = logo_choice.upper()
+        try:
+            fallback_font = ImageFont.truetype("Barlow-Light.ttf", int(exif_area_height * 0.2))
+        except:
+            try:
+                fallback_font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", int(exif_area_height * 0.2))
+            except:
+                fallback_font = font
+        
+        try:
+            text_width = draw.textlength(fallback_text, font=fallback_font)
+        except:
+            text_width = len(fallback_text) * font_size * 0.8
+        
+        if watermark_position == "Kiri":
+            text_x = 30
+        elif watermark_position == "Tengah":
+            text_x = (img_width - text_width) // 2
+        else:
+            text_x = img_width - text_width - 30
+        
+        draw.text((text_x, y_start + logo_offset), fallback_text, font=fallback_font, fill=theme_colors["text_color"])
 
     # Tulis teks EXIF
     y = y_start
@@ -218,6 +245,19 @@ st.markdown('<div class="subtitle">Buat watermark foto profesional dengan data E
 with st.sidebar:
     st.header("⚙️ Pengaturan")
     theme_choice = st.radio("🎨 Theme", ["Terang", "Gelap"], horizontal=True)
+    st.markdown("---")
+    
+    # Cek apakah folder logos ada
+    if not os.path.exists("logos"):
+        st.warning("⚠️ **Folder 'logos' belum ditemukan!**\n\nLogo akan ditampilkan sebagai text. Upload folder logos ke repository untuk menampilkan logo gambar.")
+    else:
+        # Cek file logo yang ada
+        logo_files = os.listdir("logos") if os.path.exists("logos") else []
+        if logo_files:
+            st.success(f"✅ {len(logo_files)} logo terdeteksi")
+        else:
+            st.warning("⚠️ Folder logos kosong")
+    
     st.markdown("---")
     st.info("💡 **Tips:** Upload foto hasil kamera untuk mendapatkan data EXIF yang lengkap")
 
