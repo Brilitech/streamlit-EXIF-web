@@ -14,7 +14,7 @@ Aplikasi web untuk membuat watermark foto profesional dengan menampilkan data EX
 
 ## 🚀 Demo
 
-[Live Demo di Streamlit Cloud](https://your-app-url.streamlit.app)
+[Live Demo di Streamlit Cloud](https://acil-exif-web.streamlit.app)
 
 ## 📦 Instalasi
 
@@ -115,4 +115,4 @@ Jika ada pertanyaan atau saran, silakan buka issue di GitHub.
 
 ---
 
-Made with ❤️ by Python Enthusiast
+Made with ❤️ by Brilitech
