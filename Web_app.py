@@ -3,8 +3,13 @@ from PIL import Image, ImageDraw, ImageFont
 import piexif
 import io
 import os
-from pillow_heif import register_heif_opener
-register_heif_opener()
+
+# Import HEIF support jika tersedia
+try:
+    from pillow_heif import register_heif_opener
+    register_heif_opener()
+except ImportError:
+    pass
 
 # --- Konfigurasi Theme ---
 def apply_theme(theme):
@@ -15,7 +20,7 @@ def apply_theme(theme):
             "frame_color": (30, 30, 30),
             "feed_bg": (10, 10, 10)
         }
-    else:
+    else:  # Terang
         return {
             "bg_color": (255, 255, 255),
             "text_color": (0, 0, 0),
@@ -120,7 +125,10 @@ def generate_final_template(image, exif_lines, logo_choice, watermark_position, 
     try:
         font = ImageFont.truetype("Barlow-Light.ttf", font_size)
     except:
-        font = ImageFont.load_default()
+        try:
+            font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", font_size)
+        except:
+            font = ImageFont.load_default()
 
     draw = ImageDraw.Draw(result_img)
     y_start = img_height + 20
@@ -151,7 +159,11 @@ def generate_final_template(image, exif_lines, logo_choice, watermark_position, 
     # Tulis teks EXIF
     y = y_start
     for line in exif_lines:
-        text_width = draw.textlength(line, font=font)
+        try:
+            text_width = draw.textlength(line, font=font)
+        except:
+            # Fallback untuk versi PIL lama
+            text_width = len(line) * font_size * 0.6
 
         if exif_position == "Kiri":
             x = 40
@@ -209,6 +221,7 @@ with st.sidebar:
     st.markdown("---")
     st.info("💡 **Tips:** Upload foto hasil kamera untuk mendapatkan data EXIF yang lengkap")
 
+# Apply theme
 theme_colors = apply_theme(theme_choice)
 
 col1, col2 = st.columns([1, 2])
@@ -237,21 +250,24 @@ with col2:
                 image = image.rotate(rotate_degrees, expand=True)
 
             exif_lines = get_filtered_exif(image)
+            
+            # Apply theme saat crop
             image = crop_and_fit_to_4x5(image, theme_colors)
 
             if layout_option == "Dengan Bingkai":
                 image = add_frame(image, frame_thickness=40, theme_colors=theme_colors)
 
+            # Generate template dengan theme
             result_img = generate_final_template(
                 image, exif_lines, logo_choice, watermark_position, exif_position, logo_offset, theme_colors
             )
 
-            st.image(result_img, caption="📸 Preview Template", use_container_width=True)
+            st.image(result_img, caption="📸 Preview Template")
 
             st.markdown("---")
             st.subheader("📱 Preview Feed Instagram")
             feed_mockup = create_feed_mockup(result_img, theme_colors)
-            st.image(feed_mockup, caption="Grid 3 Kolom Instagram", use_container_width=True)
+            st.image(feed_mockup, caption="Grid 3 Kolom Instagram")
 
             # Download button
             buffer = io.BytesIO()
@@ -260,35 +276,17 @@ with col2:
                 label="📥 Download Template",
                 data=buffer.getvalue(),
                 file_name=f"instagram_exif_{theme_choice.lower()}.jpg",
-                mime="image/jpeg",
-                use_container_width=True
+                mime="image/jpeg"
             )
             
         except Exception as e:
             st.error(f"❌ Gagal memproses gambar: {e}")
+            st.exception(e)  # Tampilkan detail error untuk debugging
     else:
         st.info("👆 Upload gambar di panel kiri untuk memulai")
         
-        # Buat placeholder image lokal
-        placeholder = Image.new("RGB", (1080, 1350), (200, 200, 200))
-        draw = ImageDraw.Draw(placeholder)
-        
-        try:
-            font = ImageFont.truetype("Barlow-Light.ttf", 60)
-        except:
-            font = ImageFont.load_default()
-        
-        text = "Upload Foto Anda"
-        bbox = draw.textbbox((0, 0), text, font=font)
-        text_width = bbox[2] - bbox[0]
-        text_height = bbox[3] - bbox[1]
-        
-        x = (1080 - text_width) // 2
-        y = (1350 - text_height) // 2
-        
-        draw.text((x, y), text, font=font, fill=(100, 100, 100))
-        
-        st.image(placeholder, use_container_width=True)
+        # Placeholder sederhana tanpa error
+        st.markdown("### Preview akan muncul di sini")
 
 # Footer
 st.markdown("---")
