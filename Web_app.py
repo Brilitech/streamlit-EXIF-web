@@ -268,7 +268,27 @@ with col2:
             st.error(f"❌ Gagal memproses gambar: {e}")
     else:
         st.info("👆 Upload gambar di panel kiri untuk memulai")
-        st.image("https://via.placeholder.com/1080x1350/cccccc/666666?text=Upload+Foto+Anda", use_container_width=True)
+        
+        # Buat placeholder image lokal
+        placeholder = Image.new("RGB", (1080, 1350), (200, 200, 200))
+        draw = ImageDraw.Draw(placeholder)
+        
+        try:
+            font = ImageFont.truetype("Barlow-Light.ttf", 60)
+        except:
+            font = ImageFont.load_default()
+        
+        text = "Upload Foto Anda"
+        bbox = draw.textbbox((0, 0), text, font=font)
+        text_width = bbox[2] - bbox[0]
+        text_height = bbox[3] - bbox[1]
+        
+        x = (1080 - text_width) // 2
+        y = (1350 - text_height) // 2
+        
+        draw.text((x, y), text, font=font, fill=(100, 100, 100))
+        
+        st.image(placeholder, use_container_width=True)
 
 # Footer
 st.markdown("---")
