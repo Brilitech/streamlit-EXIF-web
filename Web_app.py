@@ -273,7 +273,7 @@ with col1:
     if uploaded_file:
         st.markdown("---")
         rotate_degrees = st.selectbox("🔄 Rotasi Gambar", [0, 90, 180, 270])
-        logo_choice = st.selectbox("📷 Logo Kamera", ["canon", "fujifilm", "samsung", "gopro", "olympus", "fujifilm2", "iphone"])
+        logo_choice = st.selectbox("📷 Logo Kamera", ["canon", "fujifilm", "samsung", "gopro", "olympus", "fujifilm2", "iphone", "xiaomi"])
         watermark_position = st.radio("📍 Posisi Logo", ["Kiri", "Tengah", "Kanan"], horizontal=True)
         exif_position = st.radio("📝 Posisi Teks EXIF", ["Kiri", "Tengah", "Kanan"], horizontal=True)
         logo_offset = st.slider("↕️ Offset Logo", 0, 50, 10, help="Geser logo ke bawah")
