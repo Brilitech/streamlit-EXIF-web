@@ -94,7 +94,6 @@ def crop_to_format(image, format_type, crop_x=0.5, crop_y=0.5):
     except AttributeError:
         resample_filter = Image.ANTIALIAS
 
-    # Centering menerima tuple (x, y) dari 0.0 hingga 1.0
     return ImageOps.fit(image, target_size, method=resample_filter, centering=(crop_x, crop_y))
 
 # --- Tambahkan bingkai ---
@@ -107,7 +106,7 @@ def add_frame(image, frame_thickness=30, theme_colors=None):
     return framed
 
 # --- Buat Template Final ---
-def generate_final_template(image, exif_lines, logo_choice, watermark_position, exif_position, logo_offset, theme_colors, format_type):
+def generate_final_template(image, exif_lines, logo_choice, watermark_position, exif_position, logo_offset, theme_colors, format_type, logo_scale=1.0, font_scale=1.0):
     img_width, img_height = image.size
 
     # Pengaturan Dimensi Area Berdasarkan Format
@@ -118,8 +117,10 @@ def generate_final_template(image, exif_lines, logo_choice, watermark_position, 
         
         panel_x, panel_y = 0, img_height
         panel_w, panel_h = 1080, exif_area_height
-        font_size = int(exif_area_height * 0.15)
-        logo_max_size = int(exif_area_height * 0.5)
+        
+        # Base sizes
+        base_font_size = int(exif_area_height * 0.15)
+        base_logo_max_size = int(exif_area_height * 0.5)
     else:  # Kanan (Foto 1:1)
         total_width = 1080
         total_height = 1080
@@ -127,8 +128,14 @@ def generate_final_template(image, exif_lines, logo_choice, watermark_position, 
         
         panel_x, panel_y = img_width, 0
         panel_w, panel_h = exif_area_width, 1080
-        font_size = 32
-        logo_max_size = 180
+        
+        # Base sizes
+        base_font_size = 32
+        base_logo_max_size = 180
+
+    # Terapkan Skala dari Slider
+    font_size = int(base_font_size * font_scale)
+    logo_max_size = int(base_logo_max_size * logo_scale)
 
     result_img = Image.new("RGB", (total_width, total_height), theme_colors["bg_color"])
     result_img.paste(image, (0, 0))
@@ -158,7 +165,7 @@ def generate_final_template(image, exif_lines, logo_choice, watermark_position, 
             if format_type == "Bawah (Foto 4:5)":
                 ratio = logo_max_size / logo_image.height
             else:
-                ratio = min(logo_max_size / logo_image.width, 80 / logo_image.height)
+                ratio = min(logo_max_size / logo_image.width, (80 * logo_scale) / logo_image.height)
             
             logo_image = logo_image.resize((int(logo_image.width * ratio), int(logo_image.height * ratio)))
             logo_found = True
@@ -166,7 +173,7 @@ def generate_final_template(image, exif_lines, logo_choice, watermark_position, 
             pass
 
     # Kalkulasi Dimensi Tinggi Elemen (untuk Center Alignment)
-    line_spacing = 8
+    line_spacing = int(8 * font_scale) # Spasi antar baris juga disesuaikan dengan skala font
     total_lines_height = len(exif_lines) * font_size + max(0, len(exif_lines) - 1) * line_spacing
     
     if logo_found:
@@ -175,20 +182,15 @@ def generate_final_template(image, exif_lines, logo_choice, watermark_position, 
     else:
         logo_h_actual = int(font_size * 1.5)
 
-    # --- LOGIKA PENEMPATAN BARU SEJAJAR ---
+    # --- LOGIKA PENEMPATAN ---
     if format_type == "Bawah (Foto 4:5)":
-        # Temukan titik tengah dari kotak putih di bawah
         center_y = panel_y + (panel_h // 2) + logo_offset
-        
-        # Logo dan Teks di-center secara vertikal pada garis yang sama
         logo_y = center_y - (logo_h_actual // 2)
         y_text_start = center_y - (total_lines_height // 2)
         
     else: # Kanan (Foto 1:1)
-        # Jika di kanan, elemen disusun menumpuk ke bawah (stacked)
         group_total_height = logo_h_actual + 30 + total_lines_height
         start_y = panel_y + (panel_h - group_total_height) // 2 + logo_offset
-        
         logo_y = start_y
         y_text_start = start_y + logo_h_actual + 30
 
@@ -318,9 +320,13 @@ with col1:
         format_foto = st.radio("📐 Format & Posisi EXIF", ["Bawah (Foto 4:5)", "Kanan (Foto 1:1)"])
         
         st.markdown("**✂️ Sesuaikan Posisi Crop Foto:**")
-        # Nilai slider 0-100, dibagi 100 agar jadi 0.0 - 1.0 (format yang diminta Pillow)
         crop_x = st.slider("↔️ Geser Horizontal", 0, 100, 50, help="Geser fokus ke kiri/kanan") / 100.0
         crop_y = st.slider("↕️ Geser Vertikal", 0, 100, 50, help="Geser fokus ke atas/bawah") / 100.0
+        st.markdown("---")
+
+        st.markdown("**📏 Ukuran Skala Elemen:**")
+        logo_scale = st.slider("🔍 Ukuran Logo (%)", 30, 200, 100, step=5, help="Atur persentase ukuran logo") / 100.0
+        font_scale = st.slider("🔠 Ukuran Teks (%)", 50, 200, 100, step=5, help="Atur persentase ukuran font EXIF") / 100.0
         st.markdown("---")
 
         rotate_degrees = st.selectbox("🔄 Rotasi Gambar", [0, 90, 180, 270])
@@ -341,12 +347,11 @@ with col2:
                 image = image.rotate(rotate_degrees, expand=True)
 
             exif_lines = get_filtered_exif(image)
-            
-            # --- Terapkan crop dengan koordinat X dan Y dari slider ---
             image = crop_to_format(image, format_foto, crop_x, crop_y)
 
+            # --- Pass parameter logo_scale dan font_scale ke fungsi utama ---
             result_img = generate_final_template(
-                image, exif_lines, logo_choice, watermark_position, exif_position, logo_offset, theme_colors, format_foto
+                image, exif_lines, logo_choice, watermark_position, exif_position, logo_offset, theme_colors, format_foto, logo_scale, font_scale
             )
 
             if layout_option == "Dengan Bingkai":
