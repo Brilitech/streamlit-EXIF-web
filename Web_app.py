@@ -5,7 +5,7 @@ import io
 import os
 
 # --- PAGE CONFIG (HARUS PALING ATAS) ---
-st.set_page_config(page_title="EXIF Generator v2.2", layout="wide", page_icon="📷", initial_sidebar_state="expanded")
+st.set_page_config(page_title="Exif Generator v2.3", layout="wide", page_icon="📷", initial_sidebar_state="expanded")
 
 # Import HEIF support jika tersedia
 try:
@@ -17,10 +17,19 @@ except ImportError:
 # --- Custom CSS untuk UI yang lebih Cerah, Halus, dan Badge Versi ---
 st.markdown("""
 <style>
-    /* Styling Badge Versi & Header */
-    .sidebar-header { display: flex; align-items: center; gap: 10px; margin-bottom: 20px; }
-    .main-title { font-size: 1.8em; font-weight: 800; margin: 0; color: #1f2937; }
-    .version-badge { background-color: #3b82f6; color: white; padding: 4px 12px; border-radius: 20px; font-size: 0.8em; font-weight: bold; }
+    /* Styling Badge Versi / Judul Aplikasi */
+    .sidebar-header { margin-bottom: 25px; }
+    .app-bubble { 
+        background: linear-gradient(135deg, #3b82f6, #2563eb); 
+        color: white; 
+        padding: 12px 16px; 
+        border-radius: 12px; 
+        font-size: 1.3em; 
+        font-weight: 800; 
+        text-align: center;
+        box-shadow: 0 4px 6px -1px rgba(59, 130, 246, 0.3);
+        letter-spacing: 0.5px;
+    }
     
     /* Memperhalus elemen UI Streamlit */
     div.stButton > button { border-radius: 8px; font-weight: 600; transition: all 0.3s; width: 100%; border: 1px solid #e5e7eb; }
@@ -179,17 +188,18 @@ def generate_final_template(image, exif_lines, logo_choice, watermark_position, 
     y = y_text_start
     for item in exif_lines:
         if item[0] == "camera":
-            make_text, model_text = (item[1] + " " if item[1] else ""), item[2]
-            try: w_make, w_model = draw.textlength(make_text, font=font), draw.textlength(model_text, font=font_bold)
-            except: w_make, w_model = len(make_text) * font_size * 0.6, len(model_text) * font_size * 0.6
-            text_width = w_make + w_model
+            # GABUNGKAN MEREK DAN MODEL, LALU GUNAKAN FONT BOLD UNTUK KEDUANYA
+            camera_text = f"{item[1]} {item[2]}".strip()
+            try: 
+                text_width = draw.textlength(camera_text, font=font_bold)
+            except: 
+                text_width = len(camera_text) * font_size * 0.6
             
             if exif_position == "Kiri": x = panel_x + 40
             elif exif_position == "Tengah": x = panel_x + (panel_w - text_width) // 2
             else: x = panel_x + panel_w - text_width - 40
 
-            draw.text((x, y), make_text, font=font, fill=theme_colors["text_color"])
-            draw.text((x + w_make, y), model_text, font=font_bold, fill=theme_colors["text_color"])
+            draw.text((x, y), camera_text, font=font_bold, fill=theme_colors["text_color"])
         else:
             line = item[1]
             try: text_width = draw.textlength(line, font=font)
@@ -206,10 +216,10 @@ def generate_final_template(image, exif_lines, logo_choice, watermark_position, 
 
 # --- UI SIDEBAR (Kiri Paling Ujung) ---
 with st.sidebar:
+    # Menggunakan bubble tunggal yang estetik untuk judul
     st.markdown("""
         <div class="sidebar-header">
-            <div class="main-title">📷 EXIF Gen</div>
-            <div class="version-badge">v2.2</div>
+            <div class="app-bubble">📷 Exif Generator v2.3</div>
         </div>
     """, unsafe_allow_html=True)
     
@@ -229,13 +239,11 @@ theme_colors = apply_theme(theme_choice)
 
 # --- UI MAIN AREA (Bagi 2 Kolom: Kiri Kontrol, Kanan Preview) ---
 if uploaded_file:
-    # Membagi layar: 40% untuk panel pengaturan, 60% untuk preview
     col_controls, col_space, col_preview = st.columns([4, 0.5, 5.5])
 
     with col_controls:
         st.subheader("🛠️ Kustomisasi Layout")
         
-        # Kelompok Format & Crop
         with st.container(border=True):
             format_foto = st.radio("📐 Format Instagram", ["Bawah (Foto 4:5)", "Kanan (Foto 1:1)"])
             st.markdown("<hr style='margin: 10px 0;'>", unsafe_allow_html=True)
@@ -243,14 +251,12 @@ if uploaded_file:
             crop_x = st.slider("↔️ Fokus Horizontal", 0, 100, 50, label_visibility="visible") / 100.0
             crop_y = st.slider("↕️ Fokus Vertikal", 0, 100, 50, label_visibility="visible") / 100.0
 
-        # Kelompok Skala
         with st.container(border=True):
             st.markdown("**📏 Ukuran Elemen:**")
             logo_scale = st.slider("🔍 Skala Logo (%)", 30, 200, 100, step=5) / 100.0
             font_scale = st.slider("🔠 Skala Teks EXIF (%)", 50, 200, 100, step=5) / 100.0
             logo_offset = st.slider("↕️ Vertikal Offset (Geser Atas/Bawah)", -100, 100, 0)
 
-        # Kelompok Detail Tambahan
         with st.container(border=True):
             st.markdown("**🎨 Elemen & Posisi:**")
             logo_choice = st.selectbox("📷 Pilih Logo Kamera", ["canon", "fujifilm", "samsung", "gopro", "olympus", "fujifilm2", "iphone", "xiaomi"])
@@ -282,10 +288,8 @@ if uploaded_file:
             if layout_option == "Dengan Bingkai":
                 result_img = add_frame(result_img, frame_thickness=40, theme_colors=theme_colors)
 
-            # Gambar akan otomatis menyesuaikan lebar kolom tanpa perlu scroll lebar!
             st.image(result_img, use_column_width=True)
 
-            # Tombol Download tepat di bawah preview utama
             buffer = io.BytesIO()
             result_img.save(buffer, format="JPEG", quality=95)
             st.download_button(
@@ -300,12 +304,11 @@ if uploaded_file:
             st.error(f"❌ Gagal memproses gambar: {e}")
 
 else:
-    # Tampilan selamat datang sebelum upload
     st.info("👈 Silakan unggah foto pada panel di sebelah kiri untuk memulai proses desain.")
     st.markdown("---")
     st.markdown("""
     <div style='text-align: center; color: #888;'>
-        <h3>Selamat datang di EXIF Gen v2.2</h3>
+        <h3>Selamat datang di Exif Generator v2.3</h3>
         <p>Aplikasi untuk menambahkan template EXIF elegan pada foto Instagram Anda secara otomatis.</p>
     </div>
     """, unsafe_allow_html=True)
