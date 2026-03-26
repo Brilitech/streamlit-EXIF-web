@@ -221,7 +221,7 @@ def generate_final_template(image, exif_lines, logo_choice, watermark_position, 
 with st.sidebar:
     st.markdown("""
         <div class="sidebar-header">
-            <div class="app-bubble">📷 Exif Generator v2.3.2</div>
+            <div class="app-bubble">📷 Exif Generator v2.4</div>
         </div>
     """, unsafe_allow_html=True)
     
