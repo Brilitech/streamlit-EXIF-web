@@ -270,7 +270,7 @@ if uploaded_file:
             rotate_degrees = st.selectbox("🔄 Rotasi Gambar", [0, 90, 180, 270])
 
     with col_preview:
-        st.subheader("👁️ Live Preview")
+        st.subheader("🖼️ Live Preview")
         file_bytes = uploaded_file.read()
         try:
             image = Image.open(io.BytesIO(file_bytes)).convert("RGB")
