@@ -310,7 +310,7 @@ else:
     st.markdown("---")
     st.markdown("""
     <div style='text-align: center; color: #888;'>
-        <h3>Selamat datang di Exif Generator v2.3.2</h3>
+        <h3>Selamat datang di Exif Generator v2.4</h3>
         <p>Aplikasi untuk menambahkan template EXIF elegan pada foto Instagram Anda secara otomatis.</p>
     </div>
     """, unsafe_allow_html=True)
