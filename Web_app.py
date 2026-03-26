@@ -1,5 +1,5 @@
 import streamlit as st
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFont, ImageOps
 import piexif
 import io
 import os
@@ -81,41 +81,22 @@ def fix_image_orientation(image):
         pass
     return image
 
-# --- Crop & Resize dinamis (4:5 atau 1:1) ---
-def crop_to_format(image, format_type, theme_colors):
+# --- Crop & Resize menggunakan ImageOps (Anti-Gepeng) ---
+def crop_to_format(image, format_type):
+    # Kita tentukan ukuran akhir area FOTO-nya saja. 
+    # Total template nanti akan tetap 1080x1350 atau 1080x1080
     if format_type == "Bawah (Foto 4:5)":
-        target_width, target_height = 1080, 1350
-        target_ratio = 1080 / 1350
+        target_size = (1080, 1150) # 1350 dikurangi 200 untuk ruang EXIF di bawah
     else:  # Kanan (Foto 1:1)
-        target_width, target_height = 1080, 1080
-        target_ratio = 1.0
+        target_size = (700, 1080)  # 1080 dikurangi 380 untuk ruang EXIF di kanan
 
-    width, height = image.size
-    img_ratio = width / height
-
-    if img_ratio > target_ratio:
-        new_width = int(height * target_ratio)
-        left = (width - new_width) // 2
-        image = image.crop((left, 0, left + new_width, height))
-    elif img_ratio < target_ratio:
-        new_height = int(width / target_ratio)
-        top = (height - new_height) // 2
-        image = image.crop((0, top, width, top + new_height))
-
-    # Gunakan LANCZOS untuk hasil resize terbaik jika versi Pillow mendukung
     try:
         resample_filter = Image.Resampling.LANCZOS
     except AttributeError:
         resample_filter = Image.ANTIALIAS
 
-    image.thumbnail((target_width, target_height), resample_filter)
-
-    final_img = Image.new("RGB", (target_width, target_height), theme_colors["bg_color"])
-    x = (target_width - image.width) // 2
-    y = (target_height - image.height) // 2
-    final_img.paste(image, (x, y))
-    
-    return final_img
+    # ImageOps.fit otomatis meng-crop tepat di tengah tanpa merusak rasio (center crop)
+    return ImageOps.fit(image, target_size, method=resample_filter, centering=(0.5, 0.5))
 
 # --- Tambahkan bingkai ---
 def add_frame(image, frame_thickness=30, theme_colors=None):
@@ -130,22 +111,24 @@ def add_frame(image, frame_thickness=30, theme_colors=None):
 def generate_final_template(image, exif_lines, logo_choice, watermark_position, exif_position, logo_offset, theme_colors, format_type):
     img_width, img_height = image.size
 
-    # Pengaturan Dimensi Area Berdasarkan Format
+    # Pengaturan Dimensi Area Berdasarkan Format (Ukuran FIX Instagram)
     if format_type == "Bawah (Foto 4:5)":
-        exif_area_height = 200
-        total_width = img_width
-        total_height = img_height + exif_area_height
+        total_width = 1080
+        total_height = 1350
+        exif_area_height = total_height - img_height # 200
+        
         panel_x, panel_y = 0, img_height
-        panel_w, panel_h = img_width, exif_area_height
+        panel_w, panel_h = 1080, exif_area_height
         font_size = int(exif_area_height * 0.13)
         logo_max_size = int(exif_area_height * 0.6)
     else:  # Kanan (Foto 1:1)
-        exif_area_width = 380  # Lebar panel kanan
-        total_width = img_width + exif_area_width
-        total_height = img_height
+        total_width = 1080
+        total_height = 1080
+        exif_area_width = total_width - img_width # 380
+        
         panel_x, panel_y = img_width, 0
-        panel_w, panel_h = exif_area_width, img_height
-        font_size = 32  # Ukuran font agak dibesarkan untuk panel kanan
+        panel_w, panel_h = exif_area_width, 1080
+        font_size = 32
         logo_max_size = 180
 
     result_img = Image.new("RGB", (total_width, total_height), theme_colors["bg_color"])
@@ -176,7 +159,6 @@ def generate_final_template(image, exif_lines, logo_choice, watermark_position, 
             if format_type == "Bawah (Foto 4:5)":
                 ratio = logo_max_size / logo_image.height
             else:
-                # Untuk panel kanan, batasi lebar logo agar tidak mentok
                 ratio = min(logo_max_size / logo_image.width, 80 / logo_image.height)
             
             logo_image = logo_image.resize((int(logo_image.width * ratio), int(logo_image.height * ratio)))
@@ -184,21 +166,21 @@ def generate_final_template(image, exif_lines, logo_choice, watermark_position, 
         except:
             pass
 
-    # --- Kalkulasi Posisi Y agar Vertikal Tengah (khusus panel kanan) ---
+    # Kalkulasi Posisi Y agar Vertikal Tengah (khusus panel kanan) atau statis (panel bawah)
     line_spacing = 8
     total_lines_height = len(exif_lines) * (font_size + line_spacing)
     
     if logo_found:
         logo_h_actual = logo_image.height
     else:
-        logo_h_actual = font_size * 2 # Estimasi untuk fallback teks logo
+        logo_h_actual = font_size * 2
     
     group_total_height = logo_h_actual + 30 + total_lines_height
 
     if format_type == "Kanan (Foto 1:1)":
         y_start = panel_y + (panel_h - group_total_height) // 2 + logo_offset
     else:
-        y_start = img_height + 20 + logo_offset # Statis untuk bawah
+        y_start = panel_y + 20 + logo_offset
 
     # Gambar Logo / Fallback Teks
     logo_y = y_start
@@ -272,13 +254,11 @@ def generate_final_template(image, exif_lines, logo_choice, watermark_position, 
 
 # --- Preview mockup IG feed 3 kolom ---
 def create_feed_mockup(final_img, theme_colors, format_type):
-    # Sesuaikan rasio mockup berdasarkan format
+    # Ukuran kotak feed sesuai dengan rasio akhir gambar
     if format_type == "Bawah (Foto 4:5)":
         preview_w, preview_h = 360, 450
-    else: # Landscape/Square base
-        ratio = final_img.width / final_img.height
-        preview_h = 360
-        preview_w = int(preview_h * ratio)
+    else: 
+        preview_w, preview_h = 360, 360
 
     final_img_resized = final_img.resize((preview_w, preview_h))
     feed_width = 3 * preview_w + 4 * 10
@@ -349,16 +329,16 @@ with col2:
 
             exif_lines = get_filtered_exif(image)
             
-            # Crop berdasarkan pilihan format
-            image = crop_to_format(image, format_foto, theme_colors)
-
-            if layout_option == "Dengan Bingkai":
-                image = add_frame(image, frame_thickness=40, theme_colors=theme_colors)
+            # Crop dengan fungsi ImageOps baru yang lebih akurat
+            image = crop_to_format(image, format_foto)
 
             # Generate template final
             result_img = generate_final_template(
                 image, exif_lines, logo_choice, watermark_position, exif_position, logo_offset, theme_colors, format_foto
             )
+
+            if layout_option == "Dengan Bingkai":
+                result_img = add_frame(result_img, frame_thickness=40, theme_colors=theme_colors)
 
             st.image(result_img, caption=f"📸 Preview Template ({format_foto})")
 
