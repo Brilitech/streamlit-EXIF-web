@@ -5,7 +5,7 @@ import io
 import os
 
 # --- PAGE CONFIG (HARUS PALING ATAS) ---
-st.set_page_config(page_title="Exif Generator v2.3", layout="wide", page_icon="📷", initial_sidebar_state="expanded")
+st.set_page_config(page_title="Exif Generator v2.4", layout="wide", page_icon="📷", initial_sidebar_state="expanded")
 
 # Import HEIF support jika tersedia
 try:
@@ -38,6 +38,11 @@ st.markdown("""
     
     /* Penyeragaman Font */
     .stRadio label, .stSlider label, .stSelectbox label { font-size: 1rem !important; font-weight: 600 !important; }
+    
+    /* Footer Styling */
+    .footer { text-align: center; color: #888; font-size: 0.9em; padding: 20px 0; margin-top: 30px; border-top: 1px solid #eaeaea; }
+    .footer a { color: #3b82f6; text-decoration: none; font-weight: bold; }
+    .footer a:hover { text-decoration: underline; color: #2563eb; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -190,10 +195,8 @@ def generate_final_template(image, exif_lines, logo_choice, watermark_position, 
         if item[0] == "camera":
             # GABUNGKAN MEREK DAN MODEL, LALU GUNAKAN FONT BOLD UNTUK KEDUANYA
             camera_text = f"{item[1]} {item[2]}".strip()
-            try: 
-                text_width = draw.textlength(camera_text, font=font_bold)
-            except: 
-                text_width = len(camera_text) * font_size * 0.6
+            try: text_width = draw.textlength(camera_text, font=font_bold)
+            except: text_width = len(camera_text) * font_size * 0.6
             
             if exif_position == "Kiri": x = panel_x + 40
             elif exif_position == "Tengah": x = panel_x + (panel_w - text_width) // 2
@@ -216,10 +219,9 @@ def generate_final_template(image, exif_lines, logo_choice, watermark_position, 
 
 # --- UI SIDEBAR (Kiri Paling Ujung) ---
 with st.sidebar:
-    # Menggunakan bubble tunggal yang estetik untuk judul
     st.markdown("""
         <div class="sidebar-header">
-            <div class="app-bubble">📷 Exif Generator v2.3</div>
+            <div class="app-bubble">📷 Exif Generator v2.3.2</div>
         </div>
     """, unsafe_allow_html=True)
     
@@ -308,7 +310,14 @@ else:
     st.markdown("---")
     st.markdown("""
     <div style='text-align: center; color: #888;'>
-        <h3>Selamat datang di Exif Generator v2.3</h3>
+        <h3>Selamat datang di Exif Generator v2.3.2</h3>
         <p>Aplikasi untuk menambahkan template EXIF elegan pada foto Instagram Anda secara otomatis.</p>
     </div>
     """, unsafe_allow_html=True)
+
+# --- FOOTER CREDITS ---
+st.markdown("""
+    <div class="footer">
+        Developed by : Brilitech | <a href="https://github.com/Brilitech" target="_blank">Github</a>
+    </div>
+""", unsafe_allow_html=True)
