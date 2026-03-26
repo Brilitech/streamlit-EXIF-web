@@ -47,18 +47,21 @@ def get_filtered_exif(image):
 
         if fnumber:
             f_val = round(fnumber[0] / fnumber[1], 1)
-            filtered.append(f"f/{f_val}")
+            filtered.append(("text", f"f/{f_val}"))
         if exposure:
-            filtered.append(f"{exposure[0]}/{exposure[1]}s")
+            filtered.append(("text", f"{exposure[0]}/{exposure[1]}s"))
         if iso:
-            filtered.append(f"ISO {iso}")
+            filtered.append(("text", f"ISO {iso}"))
+            
+        # Pisahkan Make dan Model secara eksplisit agar Model bisa di-bold
         if make or model:
-            filtered.append(f"{make} {model}".strip())
+            filtered.append(("camera", make, model))
+            
         if lens:
-            filtered.append(f"{lens}")
+            filtered.append(("text", f"{lens}"))
         
     except Exception as e:
-        filtered.append(f"Error: {str(e)}")
+        filtered.append(("text", f"Error: {str(e)}"))
     return filtered
 
 # --- Fix orientation dari EXIF ---
@@ -113,6 +116,7 @@ def add_frame(image, frame_thickness=30, theme_colors=None):
     framed.paste(image, (frame_thickness, frame_thickness))
     return framed
 
+# --- Buat Template Final (Logo + Text) ---
 def generate_final_template(image, exif_lines, logo_choice, watermark_position, exif_position, logo_offset, theme_colors):
     img_width, img_height = image.size
     exif_area_height = 200
@@ -122,18 +126,23 @@ def generate_final_template(image, exif_lines, logo_choice, watermark_position, 
     result_img.paste(image, (0, 0))
 
     font_size = int(exif_area_height * 0.13)
+    
+    # --- Load Font Reguler dan Bold ---
     try:
         font = ImageFont.truetype("Barlow-Light.ttf", font_size)
+        font_bold = ImageFont.truetype("Barlow-Bold.ttf", font_size)
     except:
         try:
             font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", font_size)
+            font_bold = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", font_size)
         except:
             font = ImageFont.load_default()
+            font_bold = font
 
     draw = ImageDraw.Draw(result_img)
     y_start = img_height + 20
 
-    # Logo kamera
+    # --- Logo Kamera ---
     logo_path = f"logos/{logo_choice}.png"
     logo_found = False
 
@@ -154,20 +163,16 @@ def generate_final_template(image, exif_lines, logo_choice, watermark_position, 
             logo_y = y_start + logo_offset
             result_img.paste(logo, (logo_x, logo_y), mask=logo)
             logo_found = True
-
         except Exception as e:
             print(f"Logo error: {e}")
     
-    # Jika logo tidak ditemukan, tampilkan text fallback
+    # --- Text Fallback Jika Logo Tidak Ditemukan ---
     if not logo_found:
         fallback_text = logo_choice.upper()
         try:
-            fallback_font = ImageFont.truetype("Barlow-Light.ttf", int(exif_area_height * 0.2))
+            fallback_font = ImageFont.truetype("Barlow-Bold.ttf", int(exif_area_height * 0.2))
         except:
-            try:
-                fallback_font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", int(exif_area_height * 0.2))
-            except:
-                fallback_font = font
+            fallback_font = font_bold
         
         try:
             text_width = draw.textlength(fallback_text, font=fallback_font)
@@ -183,23 +188,47 @@ def generate_final_template(image, exif_lines, logo_choice, watermark_position, 
         
         draw.text((text_x, y_start + logo_offset), fallback_text, font=fallback_font, fill=theme_colors["text_color"])
 
-    # Tulis teks EXIF
+    # --- Tulis Teks EXIF ---
     y = y_start
-    for line in exif_lines:
-        try:
-            text_width = draw.textlength(line, font=font)
-        except:
-            # Fallback untuk versi PIL lama
-            text_width = len(line) * font_size * 0.6
+    for item in exif_lines:
+        item_type = item[0]
+        
+        if item_type == "camera":
+            # Data kamera: Pisahkan Make dan Model
+            make_text = item[1] + " " if item[1] else ""
+            model_text = item[2]
+            
+            try:
+                w_make = draw.textlength(make_text, font=font)
+                w_model = draw.textlength(model_text, font=font_bold)
+            except:
+                w_make = len(make_text) * font_size * 0.6
+                w_model = len(model_text) * font_size * 0.6
+                
+            text_width = w_make + w_model
+            
+            if exif_position == "Kiri": x = 40
+            elif exif_position == "Tengah": x = (img_width - text_width) // 2
+            else: x = img_width - text_width - 40
 
-        if exif_position == "Kiri":
-            x = 40
-        elif exif_position == "Tengah":
-            x = (img_width - text_width) // 2
+            # Gambar Make (Reguler) lalu Model (Bold)
+            draw.text((x, y), make_text, font=font, fill=theme_colors["text_color"])
+            draw.text((x + w_make, y), model_text, font=font_bold, fill=theme_colors["text_color"])
+            
         else:
-            x = img_width - text_width - 40
+            # Teks EXIF reguler (ISO, F-stop, Lensa)
+            line = item[1]
+            try:
+                text_width = draw.textlength(line, font=font)
+            except:
+                text_width = len(line) * font_size * 0.6
 
-        draw.text((x, y), line, font=font, fill=theme_colors["text_color"])
+            if exif_position == "Kiri": x = 40
+            elif exif_position == "Tengah": x = (img_width - text_width) // 2
+            else: x = img_width - text_width - 40
+
+            draw.text((x, y), line, font=font, fill=theme_colors["text_color"])
+            
         y += font_size + 5
 
     return result_img
