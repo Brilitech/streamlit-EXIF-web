@@ -82,8 +82,8 @@ def fix_image_orientation(image):
         pass
     return image
 
-# --- Crop & Resize ---
-def crop_to_format(image, format_type):
+# --- Crop & Resize dengan opsi Centering ---
+def crop_to_format(image, format_type, crop_x=0.5, crop_y=0.5):
     if format_type == "Bawah (Foto 4:5)":
         target_size = (1080, 1150)
     else:  # Kanan (Foto 1:1)
@@ -94,7 +94,8 @@ def crop_to_format(image, format_type):
     except AttributeError:
         resample_filter = Image.ANTIALIAS
 
-    return ImageOps.fit(image, target_size, method=resample_filter, centering=(0.5, 0.5))
+    # Centering menerima tuple (x, y) dari 0.0 hingga 1.0
+    return ImageOps.fit(image, target_size, method=resample_filter, centering=(crop_x, crop_y))
 
 # --- Tambahkan bingkai ---
 def add_frame(image, frame_thickness=30, theme_colors=None):
@@ -315,10 +316,17 @@ with col1:
     if uploaded_file:
         st.markdown("---")
         format_foto = st.radio("📐 Format & Posisi EXIF", ["Bawah (Foto 4:5)", "Kanan (Foto 1:1)"])
+        
+        st.markdown("**✂️ Sesuaikan Posisi Crop Foto:**")
+        # Nilai slider 0-100, dibagi 100 agar jadi 0.0 - 1.0 (format yang diminta Pillow)
+        crop_x = st.slider("↔️ Geser Horizontal", 0, 100, 50, help="Geser fokus ke kiri/kanan") / 100.0
+        crop_y = st.slider("↕️ Geser Vertikal", 0, 100, 50, help="Geser fokus ke atas/bawah") / 100.0
+        st.markdown("---")
+
         rotate_degrees = st.selectbox("🔄 Rotasi Gambar", [0, 90, 180, 270])
         logo_choice = st.selectbox("📷 Logo Kamera", ["canon", "fujifilm", "samsung", "gopro", "olympus", "fujifilm2", "iphone", "xiaomi"])
         watermark_position = st.radio("📍 Posisi Logo", ["Kiri", "Tengah", "Kanan"], index=0, horizontal=True)
-        exif_position = st.radio("📝 Posisi Teks", ["Kiri", "Tengah", "Kanan"], index=2, horizontal=True) # Default Kanan agar estetis
+        exif_position = st.radio("📝 Posisi Teks", ["Kiri", "Tengah", "Kanan"], index=2, horizontal=True) 
         logo_offset = st.slider("↕️ Vertikal Offset", -50, 50, 0, help="Geser blok logo & teks ke atas/bawah")
         layout_option = st.selectbox("🖼️ Bingkai Luar", ["Tanpa Bingkai", "Dengan Bingkai"])
 
@@ -333,7 +341,9 @@ with col2:
                 image = image.rotate(rotate_degrees, expand=True)
 
             exif_lines = get_filtered_exif(image)
-            image = crop_to_format(image, format_foto)
+            
+            # --- Terapkan crop dengan koordinat X dan Y dari slider ---
+            image = crop_to_format(image, format_foto, crop_x, crop_y)
 
             result_img = generate_final_template(
                 image, exif_lines, logo_choice, watermark_position, exif_position, logo_offset, theme_colors, format_foto
