@@ -43,7 +43,6 @@ def get_filtered_exif(image):
         iso = exif.get(piexif.ExifIFD.ISOSpeedRatings)
         fnumber = exif.get(piexif.ExifIFD.FNumber)
         exposure = exif.get(piexif.ExifIFD.ExposureTime)
-        focal = exif.get(piexif.ExifIFD.FocalLength)
 
         if fnumber:
             f_val = round(fnumber[0] / fnumber[1], 1)
@@ -60,7 +59,9 @@ def get_filtered_exif(image):
             filtered.append(("text", f"{lens}"))
         
     except Exception as e:
-        filtered.append(("text", f"Error: {str(e)}"))
+        # Jika tidak ada EXIF, tidak apa-apa
+        pass
+        
     return filtered
 
 # --- Fix orientation dari EXIF ---
@@ -81,21 +82,18 @@ def fix_image_orientation(image):
         pass
     return image
 
-# --- Crop & Resize menggunakan ImageOps (Anti-Gepeng) ---
+# --- Crop & Resize ---
 def crop_to_format(image, format_type):
-    # Kita tentukan ukuran akhir area FOTO-nya saja. 
-    # Total template nanti akan tetap 1080x1350 atau 1080x1080
     if format_type == "Bawah (Foto 4:5)":
-        target_size = (1080, 1150) # 1350 dikurangi 200 untuk ruang EXIF di bawah
+        target_size = (1080, 1150)
     else:  # Kanan (Foto 1:1)
-        target_size = (700, 1080)  # 1080 dikurangi 380 untuk ruang EXIF di kanan
+        target_size = (700, 1080)
 
     try:
         resample_filter = Image.Resampling.LANCZOS
     except AttributeError:
         resample_filter = Image.ANTIALIAS
 
-    # ImageOps.fit otomatis meng-crop tepat di tengah tanpa merusak rasio (center crop)
     return ImageOps.fit(image, target_size, method=resample_filter, centering=(0.5, 0.5))
 
 # --- Tambahkan bingkai ---
@@ -111,7 +109,7 @@ def add_frame(image, frame_thickness=30, theme_colors=None):
 def generate_final_template(image, exif_lines, logo_choice, watermark_position, exif_position, logo_offset, theme_colors, format_type):
     img_width, img_height = image.size
 
-    # Pengaturan Dimensi Area Berdasarkan Format (Ukuran FIX Instagram)
+    # Pengaturan Dimensi Area Berdasarkan Format
     if format_type == "Bawah (Foto 4:5)":
         total_width = 1080
         total_height = 1350
@@ -119,8 +117,8 @@ def generate_final_template(image, exif_lines, logo_choice, watermark_position, 
         
         panel_x, panel_y = 0, img_height
         panel_w, panel_h = 1080, exif_area_height
-        font_size = int(exif_area_height * 0.13)
-        logo_max_size = int(exif_area_height * 0.6)
+        font_size = int(exif_area_height * 0.15)
+        logo_max_size = int(exif_area_height * 0.5)
     else:  # Kanan (Foto 1:1)
         total_width = 1080
         total_height = 1080
@@ -166,34 +164,43 @@ def generate_final_template(image, exif_lines, logo_choice, watermark_position, 
         except:
             pass
 
-    # Kalkulasi Posisi Y agar Vertikal Tengah (khusus panel kanan) atau statis (panel bawah)
+    # Kalkulasi Dimensi Tinggi Elemen (untuk Center Alignment)
     line_spacing = 8
-    total_lines_height = len(exif_lines) * (font_size + line_spacing)
+    total_lines_height = len(exif_lines) * font_size + max(0, len(exif_lines) - 1) * line_spacing
     
     if logo_found:
         logo_h_actual = logo_image.height
+        logo_w_actual = logo_image.width
     else:
-        logo_h_actual = font_size * 2
-    
-    group_total_height = logo_h_actual + 30 + total_lines_height
+        logo_h_actual = int(font_size * 1.5)
 
-    if format_type == "Kanan (Foto 1:1)":
-        y_start = panel_y + (panel_h - group_total_height) // 2 + logo_offset
-    else:
-        y_start = panel_y + 20 + logo_offset
+    # --- LOGIKA PENEMPATAN BARU SEJAJAR ---
+    if format_type == "Bawah (Foto 4:5)":
+        # Temukan titik tengah dari kotak putih di bawah
+        center_y = panel_y + (panel_h // 2) + logo_offset
+        
+        # Logo dan Teks di-center secara vertikal pada garis yang sama
+        logo_y = center_y - (logo_h_actual // 2)
+        y_text_start = center_y - (total_lines_height // 2)
+        
+    else: # Kanan (Foto 1:1)
+        # Jika di kanan, elemen disusun menumpuk ke bawah (stacked)
+        group_total_height = logo_h_actual + 30 + total_lines_height
+        start_y = panel_y + (panel_h - group_total_height) // 2 + logo_offset
+        
+        logo_y = start_y
+        y_text_start = start_y + logo_h_actual + 30
 
-    # Gambar Logo / Fallback Teks
-    logo_y = y_start
+    # Render Logo
     if logo_found:
         if watermark_position == "Kiri":
             logo_x = panel_x + 40
         elif watermark_position == "Tengah":
-            logo_x = panel_x + (panel_w - logo_image.width) // 2
+            logo_x = panel_x + (panel_w - logo_w_actual) // 2
         else:
-            logo_x = panel_x + panel_w - logo_image.width - 40
+            logo_x = panel_x + panel_w - logo_w_actual - 40
             
         result_img.paste(logo_image, (logo_x, logo_y), mask=logo_image)
-        y_text_start = logo_y + logo_image.height + 30
     else:
         fallback_text = logo_choice.upper()
         try:
@@ -211,9 +218,8 @@ def generate_final_template(image, exif_lines, logo_choice, watermark_position, 
         else: text_x = panel_x + panel_w - text_width - 40
         
         draw.text((text_x, logo_y), fallback_text, font=fallback_font, fill=theme_colors["text_color"])
-        y_text_start = logo_y + int(font_size * 1.5) + 30
 
-    # Tulis Teks EXIF
+    # Render Teks EXIF
     y = y_text_start
     for item in exif_lines:
         item_type = item[0]
@@ -254,7 +260,6 @@ def generate_final_template(image, exif_lines, logo_choice, watermark_position, 
 
 # --- Preview mockup IG feed 3 kolom ---
 def create_feed_mockup(final_img, theme_colors, format_type):
-    # Ukuran kotak feed sesuai dengan rasio akhir gambar
     if format_type == "Bawah (Foto 4:5)":
         preview_w, preview_h = 360, 450
     else: 
@@ -312,8 +317,8 @@ with col1:
         format_foto = st.radio("📐 Format & Posisi EXIF", ["Bawah (Foto 4:5)", "Kanan (Foto 1:1)"])
         rotate_degrees = st.selectbox("🔄 Rotasi Gambar", [0, 90, 180, 270])
         logo_choice = st.selectbox("📷 Logo Kamera", ["canon", "fujifilm", "samsung", "gopro", "olympus", "fujifilm2", "iphone", "xiaomi"])
-        watermark_position = st.radio("📍 Posisi Logo", ["Kiri", "Tengah", "Kanan"], horizontal=True)
-        exif_position = st.radio("📝 Posisi Teks", ["Kiri", "Tengah", "Kanan"], horizontal=True)
+        watermark_position = st.radio("📍 Posisi Logo", ["Kiri", "Tengah", "Kanan"], index=0, horizontal=True)
+        exif_position = st.radio("📝 Posisi Teks", ["Kiri", "Tengah", "Kanan"], index=2, horizontal=True) # Default Kanan agar estetis
         logo_offset = st.slider("↕️ Vertikal Offset", -50, 50, 0, help="Geser blok logo & teks ke atas/bawah")
         layout_option = st.selectbox("🖼️ Bingkai Luar", ["Tanpa Bingkai", "Dengan Bingkai"])
 
@@ -328,11 +333,8 @@ with col2:
                 image = image.rotate(rotate_degrees, expand=True)
 
             exif_lines = get_filtered_exif(image)
-            
-            # Crop dengan fungsi ImageOps baru yang lebih akurat
             image = crop_to_format(image, format_foto)
 
-            # Generate template final
             result_img = generate_final_template(
                 image, exif_lines, logo_choice, watermark_position, exif_position, logo_offset, theme_colors, format_foto
             )
