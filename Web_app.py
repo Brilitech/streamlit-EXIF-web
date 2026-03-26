@@ -53,7 +53,6 @@ def get_filtered_exif(image):
         if iso:
             filtered.append(("text", f"ISO {iso}"))
             
-        # Pisahkan Make dan Model secara eksplisit agar Model bisa di-bold
         if make or model:
             filtered.append(("camera", make, model))
             
@@ -82,10 +81,14 @@ def fix_image_orientation(image):
         pass
     return image
 
-# --- Crop, resize, dan center ke 1080x1350 canvas ---
-def crop_and_fit_to_4x5(image, theme_colors):
-    target_width, target_height = 1080, 1350
-    target_ratio = target_width / target_height
+# --- Crop & Resize dinamis (4:5 atau 1:1) ---
+def crop_to_format(image, format_type, theme_colors):
+    if format_type == "Bawah (Foto 4:5)":
+        target_width, target_height = 1080, 1350
+        target_ratio = 1080 / 1350
+    else:  # Kanan (Foto 1:1)
+        target_width, target_height = 1080, 1080
+        target_ratio = 1.0
 
     width, height = image.size
     img_ratio = width / height
@@ -99,12 +102,19 @@ def crop_and_fit_to_4x5(image, theme_colors):
         top = (height - new_height) // 2
         image = image.crop((0, top, width, top + new_height))
 
-    image.thumbnail((target_width, target_height))
+    # Gunakan LANCZOS untuk hasil resize terbaik jika versi Pillow mendukung
+    try:
+        resample_filter = Image.Resampling.LANCZOS
+    except AttributeError:
+        resample_filter = Image.ANTIALIAS
+
+    image.thumbnail((target_width, target_height), resample_filter)
 
     final_img = Image.new("RGB", (target_width, target_height), theme_colors["bg_color"])
     x = (target_width - image.width) // 2
     y = (target_height - image.height) // 2
     final_img.paste(image, (x, y))
+    
     return final_img
 
 # --- Tambahkan bingkai ---
@@ -116,18 +126,32 @@ def add_frame(image, frame_thickness=30, theme_colors=None):
     framed.paste(image, (frame_thickness, frame_thickness))
     return framed
 
-# --- Buat Template Final (Logo + Text) ---
-def generate_final_template(image, exif_lines, logo_choice, watermark_position, exif_position, logo_offset, theme_colors):
+# --- Buat Template Final ---
+def generate_final_template(image, exif_lines, logo_choice, watermark_position, exif_position, logo_offset, theme_colors, format_type):
     img_width, img_height = image.size
-    exif_area_height = 200
-    total_height = img_height + exif_area_height
 
-    result_img = Image.new("RGB", (img_width, total_height), theme_colors["bg_color"])
+    # Pengaturan Dimensi Area Berdasarkan Format
+    if format_type == "Bawah (Foto 4:5)":
+        exif_area_height = 200
+        total_width = img_width
+        total_height = img_height + exif_area_height
+        panel_x, panel_y = 0, img_height
+        panel_w, panel_h = img_width, exif_area_height
+        font_size = int(exif_area_height * 0.13)
+        logo_max_size = int(exif_area_height * 0.6)
+    else:  # Kanan (Foto 1:1)
+        exif_area_width = 380  # Lebar panel kanan
+        total_width = img_width + exif_area_width
+        total_height = img_height
+        panel_x, panel_y = img_width, 0
+        panel_w, panel_h = exif_area_width, img_height
+        font_size = 32  # Ukuran font agak dibesarkan untuk panel kanan
+        logo_max_size = 180
+
+    result_img = Image.new("RGB", (total_width, total_height), theme_colors["bg_color"])
     result_img.paste(image, (0, 0))
 
-    font_size = int(exif_area_height * 0.13)
-    
-    # --- Load Font Reguler dan Bold ---
+    # Load Fonts
     try:
         font = ImageFont.truetype("Barlow-Light.ttf", font_size)
         font_bold = ImageFont.truetype("Barlow-Bold.ttf", font_size)
@@ -140,109 +164,130 @@ def generate_final_template(image, exif_lines, logo_choice, watermark_position, 
             font_bold = font
 
     draw = ImageDraw.Draw(result_img)
-    y_start = img_height + 20
 
-    # --- Logo Kamera ---
+    # Siapkan Logo
     logo_path = f"logos/{logo_choice}.png"
     logo_found = False
-
+    logo_image = None
+    
     if os.path.exists(logo_path):
         try:
-            logo = Image.open(logo_path).convert("RGBA")
-            max_logo_height = int(exif_area_height * 0.6)
-            ratio = max_logo_height / logo.height
-            logo = logo.resize((int(logo.width * ratio), max_logo_height))
-
-            if watermark_position == "Kiri":
-                logo_x = 30
-            elif watermark_position == "Tengah":
-                logo_x = (img_width - logo.width) // 2
+            logo_image = Image.open(logo_path).convert("RGBA")
+            if format_type == "Bawah (Foto 4:5)":
+                ratio = logo_max_size / logo_image.height
             else:
-                logo_x = img_width - logo.width - 30
-
-            logo_y = y_start + logo_offset
-            result_img.paste(logo, (logo_x, logo_y), mask=logo)
+                # Untuk panel kanan, batasi lebar logo agar tidak mentok
+                ratio = min(logo_max_size / logo_image.width, 80 / logo_image.height)
+            
+            logo_image = logo_image.resize((int(logo_image.width * ratio), int(logo_image.height * ratio)))
             logo_found = True
-        except Exception as e:
-            print(f"Logo error: {e}")
+        except:
+            pass
+
+    # --- Kalkulasi Posisi Y agar Vertikal Tengah (khusus panel kanan) ---
+    line_spacing = 8
+    total_lines_height = len(exif_lines) * (font_size + line_spacing)
     
-    # --- Text Fallback Jika Logo Tidak Ditemukan ---
-    if not logo_found:
+    if logo_found:
+        logo_h_actual = logo_image.height
+    else:
+        logo_h_actual = font_size * 2 # Estimasi untuk fallback teks logo
+    
+    group_total_height = logo_h_actual + 30 + total_lines_height
+
+    if format_type == "Kanan (Foto 1:1)":
+        y_start = panel_y + (panel_h - group_total_height) // 2 + logo_offset
+    else:
+        y_start = img_height + 20 + logo_offset # Statis untuk bawah
+
+    # Gambar Logo / Fallback Teks
+    logo_y = y_start
+    if logo_found:
+        if watermark_position == "Kiri":
+            logo_x = panel_x + 40
+        elif watermark_position == "Tengah":
+            logo_x = panel_x + (panel_w - logo_image.width) // 2
+        else:
+            logo_x = panel_x + panel_w - logo_image.width - 40
+            
+        result_img.paste(logo_image, (logo_x, logo_y), mask=logo_image)
+        y_text_start = logo_y + logo_image.height + 30
+    else:
         fallback_text = logo_choice.upper()
         try:
-            fallback_font = ImageFont.truetype("Barlow-Bold.ttf", int(exif_area_height * 0.2))
+            fallback_font = ImageFont.truetype("Barlow-Bold.ttf", int(font_size * 1.5))
         except:
             fallback_font = font_bold
-        
+            
         try:
             text_width = draw.textlength(fallback_text, font=fallback_font)
         except:
             text_width = len(fallback_text) * font_size * 0.8
+            
+        if watermark_position == "Kiri": text_x = panel_x + 40
+        elif watermark_position == "Tengah": text_x = panel_x + (panel_w - text_width) // 2
+        else: text_x = panel_x + panel_w - text_width - 40
         
-        if watermark_position == "Kiri":
-            text_x = 30
-        elif watermark_position == "Tengah":
-            text_x = (img_width - text_width) // 2
-        else:
-            text_x = img_width - text_width - 30
-        
-        draw.text((text_x, y_start + logo_offset), fallback_text, font=fallback_font, fill=theme_colors["text_color"])
+        draw.text((text_x, logo_y), fallback_text, font=fallback_font, fill=theme_colors["text_color"])
+        y_text_start = logo_y + int(font_size * 1.5) + 30
 
-    # --- Tulis Teks EXIF ---
-    y = y_start
+    # Tulis Teks EXIF
+    y = y_text_start
     for item in exif_lines:
         item_type = item[0]
         
         if item_type == "camera":
-            # Data kamera: Pisahkan Make dan Model
             make_text = item[1] + " " if item[1] else ""
             model_text = item[2]
-            
             try:
                 w_make = draw.textlength(make_text, font=font)
                 w_model = draw.textlength(model_text, font=font_bold)
             except:
                 w_make = len(make_text) * font_size * 0.6
                 w_model = len(model_text) * font_size * 0.6
-                
             text_width = w_make + w_model
             
-            if exif_position == "Kiri": x = 40
-            elif exif_position == "Tengah": x = (img_width - text_width) // 2
-            else: x = img_width - text_width - 40
+            if exif_position == "Kiri": x = panel_x + 40
+            elif exif_position == "Tengah": x = panel_x + (panel_w - text_width) // 2
+            else: x = panel_x + panel_w - text_width - 40
 
-            # Gambar Make (Reguler) lalu Model (Bold)
             draw.text((x, y), make_text, font=font, fill=theme_colors["text_color"])
             draw.text((x + w_make, y), model_text, font=font_bold, fill=theme_colors["text_color"])
-            
         else:
-            # Teks EXIF reguler (ISO, F-stop, Lensa)
             line = item[1]
             try:
                 text_width = draw.textlength(line, font=font)
             except:
                 text_width = len(line) * font_size * 0.6
 
-            if exif_position == "Kiri": x = 40
-            elif exif_position == "Tengah": x = (img_width - text_width) // 2
-            else: x = img_width - text_width - 40
+            if exif_position == "Kiri": x = panel_x + 40
+            elif exif_position == "Tengah": x = panel_x + (panel_w - text_width) // 2
+            else: x = panel_x + panel_w - text_width - 40
 
             draw.text((x, y), line, font=font, fill=theme_colors["text_color"])
             
-        y += font_size + 5
+        y += font_size + line_spacing
 
     return result_img
 
 # --- Preview mockup IG feed 3 kolom ---
-def create_feed_mockup(final_img, theme_colors):
-    final_img_resized = final_img.resize((360, 450))
-    feed_width = 3 * 360 + 4 * 10
-    feed_height = 450 + 2 * 10
+def create_feed_mockup(final_img, theme_colors, format_type):
+    # Sesuaikan rasio mockup berdasarkan format
+    if format_type == "Bawah (Foto 4:5)":
+        preview_w, preview_h = 360, 450
+    else: # Landscape/Square base
+        ratio = final_img.width / final_img.height
+        preview_h = 360
+        preview_w = int(preview_h * ratio)
+
+    final_img_resized = final_img.resize((preview_w, preview_h))
+    feed_width = 3 * preview_w + 4 * 10
+    feed_height = preview_h + 2 * 10
 
     feed = Image.new("RGB", (feed_width, feed_height), theme_colors["feed_bg"])
 
     for i in range(3):
-        x = 10 + i * (360 + 10)
+        x = 10 + i * (preview_w + 10)
         feed.paste(final_img_resized, (x, 10))
 
     return feed
@@ -250,63 +295,47 @@ def create_feed_mockup(final_img, theme_colors):
 # --- UI Streamlit ---
 st.set_page_config(page_title="Instagram EXIF Generator", layout="centered", page_icon="📷")
 
-# Custom CSS untuk styling
 st.markdown("""
 <style>
-    .main-title {
-        font-size: 2.5em;
-        font-weight: bold;
-        text-align: center;
-        margin-bottom: 10px;
-    }
-    .subtitle {
-        text-align: center;
-        color: #666;
-        margin-bottom: 30px;
-    }
+    .main-title { font-size: 2.5em; font-weight: bold; text-align: center; margin-bottom: 10px; }
+    .subtitle { text-align: center; color: #666; margin-bottom: 30px; }
 </style>
 """, unsafe_allow_html=True)
 
 st.markdown('<div class="main-title">📷 Instagram EXIF Template Generator</div>', unsafe_allow_html=True)
 st.markdown('<div class="subtitle">Buat watermark foto profesional dengan data EXIF kamera</div>', unsafe_allow_html=True)
 
-# Sidebar untuk pengaturan
 with st.sidebar:
-    st.header("⚙️ Pengaturan")
+    st.header("⚙️ Pengaturan Dasar")
     theme_choice = st.radio("🎨 Theme", ["Terang", "Gelap"], horizontal=True)
     st.markdown("---")
     
-    # Cek apakah folder logos ada
     if not os.path.exists("logos"):
-        st.warning("⚠️ **Folder 'logos' belum ditemukan!**\n\nLogo akan ditampilkan sebagai text. Upload folder logos ke repository untuk menampilkan logo gambar.")
+        st.warning("⚠️ Folder 'logos' belum ditemukan!")
     else:
-        # Cek file logo yang ada
         logo_files = os.listdir("logos") if os.path.exists("logos") else []
         if logo_files:
             st.success(f"✅ {len(logo_files)} logo terdeteksi")
-        else:
-            st.warning("⚠️ Folder logos kosong")
-    
-    st.markdown("---")
-    st.info("💡 **Tips:** Upload foto hasil kamera untuk mendapatkan data EXIF yang lengkap")
+            
+    st.info("💡 **Tips:** Upload foto asli kamera untuk data EXIF maksimal.")
 
-# Apply theme
 theme_colors = apply_theme(theme_choice)
 
 col1, col2 = st.columns([1, 2])
 
 with col1:
-    st.subheader("📤 Upload & Kustomisasi")
-    uploaded_file = st.file_uploader("Upload Gambar", type=["jpg", "jpeg", "heic", "png"], help="Mendukung JPEG, HEIC, dan PNG")
+    st.subheader("📤 Kustomisasi Tampilan")
+    uploaded_file = st.file_uploader("Upload Gambar", type=["jpg", "jpeg", "heic", "png"])
     
     if uploaded_file:
         st.markdown("---")
+        format_foto = st.radio("📐 Format & Posisi EXIF", ["Bawah (Foto 4:5)", "Kanan (Foto 1:1)"])
         rotate_degrees = st.selectbox("🔄 Rotasi Gambar", [0, 90, 180, 270])
         logo_choice = st.selectbox("📷 Logo Kamera", ["canon", "fujifilm", "samsung", "gopro", "olympus", "fujifilm2", "iphone", "xiaomi"])
         watermark_position = st.radio("📍 Posisi Logo", ["Kiri", "Tengah", "Kanan"], horizontal=True)
-        exif_position = st.radio("📝 Posisi Teks EXIF", ["Kiri", "Tengah", "Kanan"], horizontal=True)
-        logo_offset = st.slider("↕️ Offset Logo", 0, 50, 10, help="Geser logo ke bawah")
-        layout_option = st.selectbox("🖼️ Layout", ["Tanpa Bingkai", "Dengan Bingkai"])
+        exif_position = st.radio("📝 Posisi Teks", ["Kiri", "Tengah", "Kanan"], horizontal=True)
+        logo_offset = st.slider("↕️ Vertikal Offset", -50, 50, 0, help="Geser blok logo & teks ke atas/bawah")
+        layout_option = st.selectbox("🖼️ Bingkai Luar", ["Tanpa Bingkai", "Dengan Bingkai"])
 
 with col2:
     if uploaded_file:
@@ -320,25 +349,24 @@ with col2:
 
             exif_lines = get_filtered_exif(image)
             
-            # Apply theme saat crop
-            image = crop_and_fit_to_4x5(image, theme_colors)
+            # Crop berdasarkan pilihan format
+            image = crop_to_format(image, format_foto, theme_colors)
 
             if layout_option == "Dengan Bingkai":
                 image = add_frame(image, frame_thickness=40, theme_colors=theme_colors)
 
-            # Generate template dengan theme
+            # Generate template final
             result_img = generate_final_template(
-                image, exif_lines, logo_choice, watermark_position, exif_position, logo_offset, theme_colors
+                image, exif_lines, logo_choice, watermark_position, exif_position, logo_offset, theme_colors, format_foto
             )
 
-            st.image(result_img, caption="📸 Preview Template")
+            st.image(result_img, caption=f"📸 Preview Template ({format_foto})")
 
             st.markdown("---")
-            st.subheader("📱 Preview Feed Instagram")
-            feed_mockup = create_feed_mockup(result_img, theme_colors)
-            st.image(feed_mockup, caption="Grid 3 Kolom Instagram")
+            st.subheader("📱 Preview Feed")
+            feed_mockup = create_feed_mockup(result_img, theme_colors, format_foto)
+            st.image(feed_mockup, caption="Simulasi Tampilan Feed")
 
-            # Download button
             buffer = io.BytesIO()
             result_img.save(buffer, format="JPEG", quality=95)
             st.download_button(
@@ -350,14 +378,11 @@ with col2:
             
         except Exception as e:
             st.error(f"❌ Gagal memproses gambar: {e}")
-            st.exception(e)  # Tampilkan detail error untuk debugging
+            st.exception(e) 
     else:
         st.info("👆 Upload gambar di panel kiri untuk memulai")
-        
-        # Placeholder sederhana tanpa error
         st.markdown("### Preview akan muncul di sini")
 
-# Footer
 st.markdown("---")
 st.markdown("""
 <div style='text-align: center; color: #666; font-size: 0.9em;'>
