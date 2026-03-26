@@ -11,6 +11,24 @@ try:
 except ImportError:
     pass
 
+# --- Custom CSS untuk styling dan penyeragaman font ---
+st.markdown("""
+<style>
+    .main-title { font-size: 2.5em; font-weight: bold; text-align: center; margin-bottom: 10px; }
+    .subtitle { text-align: center; color: #666; margin-bottom: 30px; }
+    
+    /* Penyeragaman font kontrol */
+    .stRadio label, .stSlider label, .stSelectbox label, .stFileUploader label {
+        font-size: 1.1rem !important;
+        font-weight: 500 !important;
+        color: #333 !important; /* Warna teks kontrol agar seragam */
+    }
+    .stRadio div[role="radiogroup"] label p {
+        font-size: 1.0rem !important; /* Ukuran opsi radio */
+    }
+</style>
+""", unsafe_allow_html=True)
+
 # --- Konfigurasi Theme ---
 def apply_theme(theme):
     if theme == "Gelap":
@@ -283,13 +301,6 @@ def create_feed_mockup(final_img, theme_colors, format_type):
 # --- UI Streamlit ---
 st.set_page_config(page_title="Instagram EXIF Generator", layout="centered", page_icon="📷")
 
-st.markdown("""
-<style>
-    .main-title { font-size: 2.5em; font-weight: bold; text-align: center; margin-bottom: 10px; }
-    .subtitle { text-align: center; color: #666; margin-bottom: 30px; }
-</style>
-""", unsafe_allow_html=True)
-
 st.markdown('<div class="main-title">📷 Instagram EXIF Template Generator</div>', unsafe_allow_html=True)
 st.markdown('<div class="subtitle">Buat watermark foto profesional dengan data EXIF kamera</div>', unsafe_allow_html=True)
 
@@ -309,26 +320,31 @@ with st.sidebar:
 
 theme_colors = apply_theme(theme_choice)
 
-col1, col2 = st.columns([1, 2])
+# --- Upload & Kustomisasi (Sekarang horizontal penuh setelah upload) ---
+st.subheader("📤 Kustomisasi Tampilan")
+uploaded_file = st.file_uploader("Upload Gambar", type=["jpg", "jpeg", "heic", "png"])
 
-with col1:
-    st.subheader("📤 Kustomisasi Tampilan")
-    uploaded_file = st.file_uploader("Upload Gambar", type=["jpg", "jpeg", "heic", "png"])
+if uploaded_file:
+    st.markdown("---")
     
-    if uploaded_file:
-        st.markdown("---")
+    # Perombakan tata letak kustomisasi menjadi horizontal penuh
+    custom_col1, custom_col2, custom_col3 = st.columns([1, 1.2, 1.2]) # Rasio kolom agar muat
+
+    with custom_col1:
+        st.markdown("**📏 Ukuran Skala Elemen:**")
+        # Slider di kolom kiri (paling kiri) sesuai permintaan
+        logo_scale = st.slider("🔍 Ukuran Logo (%)", 30, 200, 100, step=5, help="Atur persentase ukuran logo") / 100.0
+        font_scale = st.slider("🔠 Ukuran Teks (%)", 50, 200, 100, step=5, help="Atur persentase ukuran font EXIF") / 100.0
+
+    with custom_col2:
         format_foto = st.radio("📐 Format & Posisi EXIF", ["Bawah (Foto 4:5)", "Kanan (Foto 1:1)"])
         
         st.markdown("**✂️ Sesuaikan Posisi Crop Foto:**")
         crop_x = st.slider("↔️ Geser Horizontal", 0, 100, 50, help="Geser fokus ke kiri/kanan") / 100.0
         crop_y = st.slider("↕️ Geser Vertikal", 0, 100, 50, help="Geser fokus ke atas/bawah") / 100.0
-        st.markdown("---")
 
-        st.markdown("**📏 Ukuran Skala Elemen:**")
-        logo_scale = st.slider("🔍 Ukuran Logo (%)", 30, 200, 100, step=5, help="Atur persentase ukuran logo") / 100.0
-        font_scale = st.slider("🔠 Ukuran Teks (%)", 50, 200, 100, step=5, help="Atur persentase ukuran font EXIF") / 100.0
-        st.markdown("---")
-
+    with custom_col3:
+        st.markdown("**⚙️ Kontrol Tambahan:**")
         rotate_degrees = st.selectbox("🔄 Rotasi Gambar", [0, 90, 180, 270])
         logo_choice = st.selectbox("📷 Logo Kamera", ["canon", "fujifilm", "samsung", "gopro", "olympus", "fujifilm2", "iphone", "xiaomi"])
         watermark_position = st.radio("📍 Posisi Logo", ["Kiri", "Tengah", "Kanan"], index=0, horizontal=True)
@@ -336,49 +352,54 @@ with col1:
         logo_offset = st.slider("↕️ Vertikal Offset", -50, 50, 0, help="Geser blok logo & teks ke atas/bawah")
         layout_option = st.selectbox("🖼️ Bingkai Luar", ["Tanpa Bingkai", "Dengan Bingkai"])
 
-with col2:
-    if uploaded_file:
-        file_bytes = uploaded_file.read()
-        try:
-            image = Image.open(io.BytesIO(file_bytes)).convert("RGB")
-            image = fix_image_orientation(image)
+    # --- Area Preview (Sekarang di bawah kontrol horizontal) ---
+    st.markdown("---")
+    file_bytes = uploaded_file.read()
+    try:
+        image = Image.open(io.BytesIO(file_bytes)).convert("RGB")
+        image = fix_image_orientation(image)
 
-            if rotate_degrees != 0:
-                image = image.rotate(rotate_degrees, expand=True)
+        if rotate_degrees != 0:
+            image = image.rotate(rotate_degrees, expand=True)
 
-            exif_lines = get_filtered_exif(image)
-            image = crop_to_format(image, format_foto, crop_x, crop_y)
+        exif_lines = get_filtered_exif(image)
+        image = crop_to_format(image, format_foto, crop_x, crop_y)
 
-            # --- Pass parameter logo_scale dan font_scale ke fungsi utama ---
-            result_img = generate_final_template(
-                image, exif_lines, logo_choice, watermark_position, exif_position, logo_offset, theme_colors, format_foto, logo_scale, font_scale
-            )
+        # Generate template final
+        result_img = generate_final_template(
+            image, exif_lines, logo_choice, watermark_position, exif_position, logo_offset, theme_colors, format_foto, logo_scale, font_scale
+        )
 
-            if layout_option == "Dengan Bingkai":
-                result_img = add_frame(result_img, frame_thickness=40, theme_colors=theme_colors)
+        if layout_option == "Dengan Bingkai":
+            result_img = add_frame(result_img, frame_thickness=40, theme_colors=theme_colors)
 
-            st.image(result_img, caption=f"📸 Preview Template ({format_foto})")
+        # Gunakan kolom untuk menengahkan preview agar rapi
+        st.image(result_img, caption=f"📸 Preview Template ({format_foto})", use_column_width=True)
 
-            st.markdown("---")
-            st.subheader("📱 Preview Feed")
-            feed_mockup = create_feed_mockup(result_img, theme_colors, format_foto)
-            st.image(feed_mockup, caption="Simulasi Tampilan Feed")
+        st.markdown("---")
+        st.subheader("📱 Preview Feed")
+        feed_mockup = create_feed_mockup(result_img, theme_colors, format_foto)
+        st.image(feed_mockup, caption="Simulasi Tampilan Feed", use_column_width=True)
 
+        # Tombol download di tengah
+        st.markdown("<br>", unsafe_allow_html=True)
+        dcol1, dcol2, dcol3 = st.columns([1, 1, 1])
+        with dcol2:
             buffer = io.BytesIO()
             result_img.save(buffer, format="JPEG", quality=95)
             st.download_button(
                 label="📥 Download Template",
                 data=buffer.getvalue(),
-                file_name=f"instagram_exif_{theme_choice.lower()}.jpg",
+                file_name=f"instagram_exif_{theme_choice.lower()}_{format_foto.replace(' ', '_').replace('(', '').replace(')', '')}.jpg",
                 mime="image/jpeg"
             )
-            
-        except Exception as e:
-            st.error(f"❌ Gagal memproses gambar: {e}")
-            st.exception(e) 
-    else:
-        st.info("👆 Upload gambar di panel kiri untuk memulai")
-        st.markdown("### Preview akan muncul di sini")
+        
+    except Exception as e:
+        st.error(f"❌ Gagal memproses gambar: {e}")
+        st.exception(e) 
+else:
+    st.info("👆 Upload gambar di atas untuk memulai")
+    st.markdown("### Preview akan muncul di sini")
 
 st.markdown("---")
 st.markdown("""
