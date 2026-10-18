@@ -1,0 +1,3 @@
+watermark.domainanda.com {
+    reverse_proxy streamlit-app:8501
+}
