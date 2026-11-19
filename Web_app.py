@@ -261,7 +261,7 @@ if uploaded_file:
 
         with st.container(border=True):
             st.markdown("**🎨 Elemen & Posisi:**")
-            logo_choice = st.selectbox("📷 Pilih Logo Kamera", ["canon", "fujifilm", "samsung", "gopro", "olympus", "fujifilm2", "iphone", "xiaomi", "nikon"])
+            logo_choice = st.selectbox("📷 Pilih Logo Kamera", ["canon", "fujifilm", "samsung", "gopro", "olympus", "fujifilm2", "iphone", "xiaomi", "nikon", "sony"])
             col_pos1, col_pos2 = st.columns(2)
             with col_pos1:
                 watermark_position = st.radio("📍 Posisi Logo", ["Kiri", "Tengah", "Kanan"], index=0)
